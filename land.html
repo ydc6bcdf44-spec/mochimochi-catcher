@@ -275,7 +275,7 @@ function prepareAnimations(root,clips){
   if(/pose[_ .-]?0?[123]/.test(n)){let no=n.match(/pose[_ .-]?0?([123])/)[1],key='pose'+no;if(!importActions[key]){let act=importMixer.clipAction(clip);act.setLoop(T.LoopOnce,1);act.clampWhenFinished=true;importActions[key]=act;stand.add(new Option('収録ポーズ '+no,key))}}
  }
  root.updateMatrixWorld(true);
- if(modular){modular.feet={};}
+ if(modular){modular.feet={};for(let side of ['left','right']){let foot=rigBones[side+'foot'];if(foot)modular.feet[side]=importedModel.worldToLocal(foot.getWorldPosition(new T.Vector3()))}}
  for(let [k,b] of Object.entries(rigBones)){let inv=b.getWorldQuaternion(new T.Quaternion()).invert();let q=modular?importedModel.getWorldQuaternion(new T.Quaternion()):new T.Quaternion();rigAxes[k]={x:V(1,0,0).applyQuaternion(q).applyQuaternion(inv).normalize(),y:V(0,1,0).applyQuaternion(q).applyQuaternion(inv).normalize(),z:V(0,0,1).applyQuaternion(q).applyQuaternion(inv).normalize()}}
  syncRigFields();
 }
@@ -312,7 +312,7 @@ function stepModularLeg(side,phase,blend,style){
  importedModel.updateWorldMatrix(true,true);
  let a=upper.getWorldPosition(V(0,0,0)),b=lower.getWorldPosition(V(0,0,0)),c=foot.getWorldPosition(V(0,0,0)),L=a.distanceTo(b),M=b.distanceTo(c);if(Math.min(L,M)<1e-5)return;
  const forward=V(0,0,1).applyQuaternion(importedModel.getWorldQuaternion(new T.Quaternion()));forward.y=0;forward.normalize();
- let target=importedModel.localToWorld(rest.clone()),stride=style==='slow'?.18:style==='natural'?.32:style==='skip'?.30:.22,lift=style==='skip'?.40:style==='slow'?.19:.27;
+ let target=importedModel.localToWorld(rest.clone()),stride=style==='slow'?.15:style==='natural'?.25:style==='skip'?.25:.19,lift=style==='skip'?.24:style==='slow'?.10:.16;
  target.addScaledVector(forward,Math.sin(phase)*(L+M)*stride*blend);target.y+=Math.max(0,-Math.cos(phase))*(L+M)*lift*blend;
  let d=target.clone().sub(a),dist=T.MathUtils.clamp(d.length(),Math.abs(L-M)+.0001,(L+M)*.999);if(d.lengthSq()<1e-10)return;d.normalize();
  let kneeForward=forward.clone().addScaledVector(d,-forward.dot(d));if(kneeForward.lengthSq()<.001)kneeForward=V(0,0,1);kneeForward.normalize();
@@ -335,7 +335,7 @@ function animateImported(moving,dt,time){
  rigBlend=T.MathUtils.lerp(rigBlend,moving?1:0,1-Math.exp(-dt*12));rigPhase+=dt*cfg[0];let p=rigPhase,blend=rigBlend;
  if(moving&&actualWalk&&next)next.timeScale=walk==='slow'?.72:walk==='cute'?1.2:walk==='skip'?1.35:1;
  else if(next)next.timeScale=1;
- if(canRig&&!actualWalk&&blend>.002&&modular){for(let [side,phase] of [['left',p],['right',p+Math.PI]]){let thigh=-Math.sin(phase)*cfg[1]*.60*blend,knee=Math.max(0,-Math.cos(phase))*cfg[2]*.55*blend;offsetBone(side+'upleg','x',thigh);offsetBone(side+'leg','x',knee);offsetBone(side+'foot','x',-thigh-knee);}}
+ if(canRig&&!actualWalk&&blend>.002&&modular){for(let [side,phase] of [['left',p],['right',p+Math.PI]]){let thigh=-Math.sin(phase)*cfg[1]*.74*blend,knee=Math.max(0,-Math.cos(phase))*cfg[2]*.82*blend;offsetBone(side+'upleg','x',thigh);offsetBone(side+'leg','x',knee);offsetBone(side+'foot','x',-thigh-knee);}}
  if(canRig&&!actualWalk&&blend>.002&&!modular){
   for(let [side,phase] of [['left',p],['right',p+Math.PI]]){
    let stride=Math.sin(phase),lift=Math.max(0,-Math.cos(phase));
@@ -347,7 +347,11 @@ function animateImported(moving,dt,time){
   }
   offsetBone('spine','z',Math.sin(p)*.025*blend);offsetBone('head','z',-Math.sin(p)*.028*blend);
  }
- if((moving&&!actualWalk)||(!moving&&(stance==='idle'||modular)))relaxRigArms(p,blend,walk);if(modular&&!moving){offsetBone('head','z',stance==='gentle'?.10:stance==='cheerful'?-.065:Math.sin(time*1.6)*.012);offsetBone('spine','z',stance==='gentle'?.025:0)}
+ if(modular){
+  // Use the source bone directions for the arms, with a modest swing.
+  relaxRigArms(p,blend*.55,walk);
+  if(!moving)offsetBone('head','z',stance==='gentle'?.045:stance==='cheerful'?-.035:0);
+ }else if((moving&&!actualWalk)||(!moving&&stance==='idle'))relaxRigArms(p,blend,walk);
  if(!modular&&!moving&&stance==='idle'&&rigPrefs.rigFace==='soft')offsetBone('head','z',.065);
  importedPivot.position.y=modular?0:moving?Math.abs(Math.sin(p))*(walk==='skip'?.065:walk==='cute'?.025:.014):0;
  importedPivot.rotation.z=canRig?0:moving?Math.sin(p)*.016:0;importedPivot.rotation.x=0;
@@ -407,13 +411,29 @@ async function parseAvatarAsset(buffer){
    g.traverse(o=>{if(!o.isMesh)return;let k=modKey(o.name).replace(/^chrchibi/,'');let make=m=>materialFor(assigned[modKey(m?.name||'')]||fallback[k]||'body');o.material=Array.isArray(o.material)?o.material.map(make):make(o.material);parts[k]=o;});
    const masterBones=new Map();
    g.traverse(o=>{if(o.isBone&&!masterBones.has(o.ID))masterBones.set(o.ID,o)});
+   // Rebuild the bind pose from the actual imported rest transforms, not the FBX
+   // loader's inverse matrices captured before applying its model transforms.
+   g.updateMatrixWorld(true);
    let meshCount=0;
    g.traverse(o=>{if(!o.isSkinnedMesh||!o.skeleton)return;const prev=o.skeleton;const bones=prev.bones.map(b=>masterBones.get(b.ID)||b);
     if(bones.some(b=>!b))throw Error('共有骨格が不足しています');
-    o.skeleton=new T.Skeleton(bones,prev.boneInverses.map(m=>m.clone()));o.frustumCulled=false;meshCount++;
+    const skeleton=new T.Skeleton(bones,bones.map(b=>b.matrixWorld.clone().invert()));o.bind(skeleton,o.matrixWorld.clone());o.normalizeSkinWeights();o.frustumCulled=false;meshCount++;
    });
    if(meshCount!==15||masterBones.size!==17)throw Error('素材の骨格構成が想定と異なります（'+meshCount+'パーツ／'+masterBones.size+'骨）');
    const required=['bodyhead','hairstyle1','hairstyle2','tshirt','hoodie','skirt','shorts','eyes','mouth'];if(required.some(k=>!parts[k]))throw Error('キャラクターのパーツが見つかりません: '+required.filter(k=>!parts[k]).join(', '));
+   // Face details are solid geometry, not transparent decals. Keep the depth
+   // test enabled so they cannot show through the back of the head.
+   for(let [key,mesh] of Object.entries(parts)){
+    const detail=['eyes','eyebrowns','mouth'].includes(key);
+    mesh.userData.faceDetail=detail;
+    for(let m of [].concat(mesh.material)){m.transparent=false;m.opacity=1;m.depthWrite=true;m.depthTest=true;m.alphaTest=0;m.side=T.FrontSide;if(detail){m.polygonOffset=true;m.polygonOffsetFactor=-1;m.polygonOffsetUnits=-1}m.needsUpdate=true}
+    if(detail){
+     // All these features belong to the head; discard stray arm/spine weights
+     // in the original automatic weighting, keeping their exact rest position.
+     const headIndex=mesh.skeleton?.bones.findIndex(b=>modKey(b.name)==='defhead');
+     if(headIndex>=0){let ix=mesh.geometry.getAttribute('skinIndex'),w=mesh.geometry.getAttribute('skinWeight');if(ix&&w){for(let i=0;i<ix.count;i++){ix.setXYZW(i,headIndex,0,0,0);w.setXYZW(i,1,0,0,0)}ix.needsUpdate=true;w.needsUpdate=true}}
+    }
+   }
    // Accessory FBXs are authored in the same world-space coordinates as the base body.
    // Preserve their authored position and orientation when parenting to DEF_Head.
    g.updateMatrixWorld(true);let head=[...masterBones.values()].find(o=>modKey(o.name)==='defhead');
@@ -432,7 +452,7 @@ async function parseAvatarAsset(buffer){
   return {scene:g,animations:g.animations||[],laviAtlas:/lavi_anim\.fbx$/i.test(fbx[0])?albedo:null};
  }catch(e){for(let u of urls.values())URL.revokeObjectURL(u);throw e}
 }
-async function installModel(buffer,name,active=true){let gltf=await parseAvatarAsset(buffer);let g=gltf.scene;g.updateMatrixWorld(true);let bounds=new T.Box3();if(gltf.modular){g.traverseVisible(o=>{if(o.isMesh)bounds.union(new T.Box3().setFromObject(o))})}else bounds.setFromObject(g);let size=bounds.getSize(V(0,0,0)),center=bounds.getCenter(V(0,0,0));if(!Number.isFinite(size.y)||size.y<.001)throw Error('モデルのサイズを確認できません');let normalized=new T.Group(),offset=new T.Group();normalized.add(offset);offset.add(g);let k=1.83/size.y;offset.position.set(-center.x,-bounds.min.y,-center.z);normalized.scale.setScalar(k);normalized.rotation.y=importedAngle;g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;for(let m of [].concat(o.material)){if(m.isMeshStandardMaterial){m.needsUpdate=true}}}});if(importedModel){if(importMixer){importMixer.stopAllAction();importMixer.uncacheRoot(importMixer.getRoot())}importedPivot.remove(importedModel);disposeImported(importedModel)}importedModel=normalized;importedPivot.add(normalized);modular=gltf.modular||null;prepareAnimations(g,gltf.animations||[]);configureAtlas(g,gltf.laviAtlas);if(modular)applyModular();$('modelStatus').textContent='読み込み済み：'+name+' ／ '+(importActions.walk||importActions.run?'歩行モーションあり':modular?'関節歩行':'歩行モーションなし')+' ／ '+(importActions.idle?'待機モーションあり':'待機モーションなし')+(gltf.animations?.length?' ／ 収録: '+gltf.animations.map(c=>c.name).join(', '):'');setImported(active)}
+async function installModel(buffer,name,active=true){let gltf=await parseAvatarAsset(buffer);let g=gltf.scene;g.updateMatrixWorld(true);let bounds=new T.Box3();if(gltf.modular){g.traverseVisible(o=>{if(o.isMesh)bounds.union(new T.Box3().setFromObject(o))})}else bounds.setFromObject(g);let size=bounds.getSize(V(0,0,0)),center=bounds.getCenter(V(0,0,0));if(!Number.isFinite(size.y)||size.y<.001)throw Error('モデルのサイズを確認できません');let normalized=new T.Group(),offset=new T.Group();normalized.add(offset);offset.add(g);let k=1.83/size.y;offset.position.set(-center.x,-bounds.min.y,-center.z);normalized.scale.setScalar(k);normalized.rotation.y=importedAngle;g.traverse(o=>{if(o.isMesh){o.castShadow=gltf.modular?!o.userData.faceDetail:true;o.receiveShadow=!gltf.modular;for(let m of [].concat(o.material)){if(m.isMeshStandardMaterial){m.needsUpdate=true}}}});if(importedModel){if(importMixer){importMixer.stopAllAction();importMixer.uncacheRoot(importMixer.getRoot())}importedPivot.remove(importedModel);disposeImported(importedModel)}importedModel=normalized;importedPivot.add(normalized);modular=gltf.modular||null;prepareAnimations(g,gltf.animations||[]);configureAtlas(g,gltf.laviAtlas);if(modular)applyModular();$('modelStatus').textContent='読み込み済み：'+name+' ／ '+(importActions.walk||importActions.run?'歩行モーションあり':modular?'関節歩行':'歩行モーションなし')+' ／ '+(importActions.idle?'待機モーションあり':'待機モーションなし')+(gltf.animations?.length?' ／ 収録: '+gltf.animations.map(c=>c.name).join(', '):'');setImported(active)}
 $('modelToggle').onclick=()=>setImported(!importedActive);$('modelTurn').onclick=()=>{if(!importedModel)return;importedAngle=(importedAngle+Math.PI/2)%(Math.PI*2);importedModel.rotation.y=importedAngle;try{localStorage.setItem('mochi-model-angle',String(importedAngle))}catch{}};
 $('modelFile').addEventListener('change',async e=>{let file=e.target.files?.[0];if(!file)return;e.target.disabled=true;$('modelStatus').textContent='3Dモデルを読み込み中…';try{if(file.size>100*1024*1024)throw Error('100MB以下のGLBまたはZIPを選んでください');let buffer=await file.arrayBuffer();await installModel(buffer,file.name);try{await putModel({buffer,name:file.name});toast('専用アバターを保存しました')}catch{toast('読み込み完了・この端末での保存に失敗')}}catch(err){$('modelStatus').textContent='読み込みエラー：'+err.message}finally{e.target.disabled=false;e.target.value=''}});
 (async()=>{try{let first=localStorage.getItem('mochi-mascot-v2')!=='1';if(first){localStorage.setItem('mochi-mascot-v2','1');localStorage.setItem('mochi-custom-active','0')}let saved=await getModel();if(saved?.buffer)await installModel(saved.buffer,saved.name,localStorage.getItem('mochi-custom-active')==='1')}catch(err){$('modelStatus').textContent='保存モデルの復元エラー：'+err.message+'。必要なら再度選択してください。'}})();
@@ -454,7 +474,7 @@ renderer.domElement.addEventListener('pointermove',e=>{if(!preview)return;let p=
 let keys=new Set();const keyMap={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right'};window.addEventListener('keydown',e=>{if(!keyMap[e.code]||['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;e.preventDefault();keys.add(keyMap[e.code])});window.addEventListener('keyup',e=>keys.delete(keyMap[e.code]));window.addEventListener('blur',()=>keys.clear());document.querySelectorAll('[data-move]').forEach(b=>{b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);keys.add(b.dataset.move)};b.onpointerup=b.onpointercancel=b.onlostpointercapture=()=>keys.delete(b.dataset.move)});
 function walkable(x,z,r=.26){if(Math.abs(x)>3.78||Math.abs(z)>3.22)return false;return ![...fixedFurniture,...data.furniture].some(b=>{let t=furnitureTypes.find(t=>t.id===b.id);if(!t)return false;let sw=Math.abs(Math.sin(b.r||0))>.5;return Math.abs(x-b.x)<(sw?t.size[1]:t.size[0])/2+r&&Math.abs(z-b.z)<(sw?t.size[0]:t.size[1])/2+r})}
 $('photo').onclick=()=>{renderer.render(scene,camera);let a=document.createElement('a');a.href=renderer.domElement.toDataURL('image/png');a.download='mochimochi-room.png';a.click()};
-let prev=performance.now(),time=0;function animate(now){requestAnimationFrame(animate);let dt=Math.min(.05,(now-prev)/1000);prev=now;time+=dt;let x=(keys.has('right')?1:0)-(keys.has('left')?1:0),z=(keys.has('down')?1:0)-(keys.has('up')?1:0);let moving=false;let dir=V(x,0,z);if(dir.lengthSq()>0){target.copy(avatar.position);dir.normalize()}else{dir=target.clone().sub(avatar.position);if(dir.length()<.05)dir.set(0,0,0);else dir.normalize()}if(dir.lengthSq()>0){let step=(importedActive&&modular?({cute:1.12,natural:1.36,skip:1.38,slow:.78}[rigPrefs.rigWalk]||1.12):1.65)*dt,nx=avatar.position.x+dir.x*step,nz=avatar.position.z+dir.z*step;if(walkable(nx,avatar.position.z)){avatar.position.x=nx;moving=true}if(walkable(avatar.position.x,nz)){avatar.position.z=nz;moving=true}if(moving)avatar.rotation.y=Math.atan2(dir.x,dir.z);else target.copy(avatar.position)}legs.forEach((l,i)=>l.rotation.x=moving?Math.sin(time*12+i*Math.PI)*.43:0);arms.forEach((l,i)=>l.rotation.x=moving?Math.sin(time*12+i*Math.PI+Math.PI)*.28:0);avatarVisual.position.y=.02+(moving?Math.abs(Math.sin(time*12))*.025:Math.sin(time*2)*.008);if(importedActive)animateImported(moving,dt,time);
+let prev=performance.now(),time=0;function animate(now){requestAnimationFrame(animate);let dt=Math.min(.05,(now-prev)/1000);prev=now;time+=dt;let x=(keys.has('right')?1:0)-(keys.has('left')?1:0),z=(keys.has('down')?1:0)-(keys.has('up')?1:0);let moving=false;let dir=V(x,0,z);if(dir.lengthSq()>0){target.copy(avatar.position);dir.normalize()}else{dir=target.clone().sub(avatar.position);if(dir.length()<.05)dir.set(0,0,0);else dir.normalize()}if(dir.lengthSq()>0){let step=(importedActive&&modular?({cute:.78,natural:.87,skip:.90,slow:.46}[rigPrefs.rigWalk]||.78):1.65)*dt,nx=avatar.position.x+dir.x*step,nz=avatar.position.z+dir.z*step;if(walkable(nx,avatar.position.z)){avatar.position.x=nx;moving=true}if(walkable(avatar.position.x,nz)){avatar.position.z=nz;moving=true}if(moving)avatar.rotation.y=Math.atan2(dir.x,dir.z);else target.copy(avatar.position)}legs.forEach((l,i)=>l.rotation.x=moving?Math.sin(time*12+i*Math.PI)*.43:0);arms.forEach((l,i)=>l.rotation.x=moving?Math.sin(time*12+i*Math.PI+Math.PI)*.28:0);avatarVisual.position.y=.02+(moving?Math.abs(Math.sin(time*12))*.025:Math.sin(time*2)*.008);if(importedActive)animateImported(moving,dt,time);
 for(let [i,p] of pets){p.timer-=dt;if(p.timer<0){p.timer=2+Math.random()*4;p.target.set(p.root.position.x+(Math.random()-.5)*2.5,0,p.root.position.z+(Math.random()-.5)*2.5)}let d=p.target.clone().sub(p.root.position),dist=d.length();if(dist>.07){d.normalize();let nx=p.root.position.x+d.x*dt*.48,nz=p.root.position.z+d.z*dt*.48;if(walkable(nx,nz,.17)&&Math.hypot(nx-avatar.position.x,nz-avatar.position.z)>.38){p.root.position.set(nx,0,nz);p.root.rotation.y=Math.atan2(d.x,d.z)}else p.target.copy(p.root.position)}p.happy=Math.max(0,p.happy-dt);p.g.position.y=.34+Math.abs(Math.sin(time*(p.happy?15:dist>.07?7:2)+i))*(p.happy?.17:.025)}
 controls.update();backWall.visible=win.visible=rearDetails.visible=camera.position.z>-2;sideWall.visible=sideDetails.visible=camera.position.x>-2.5;renderer.render(scene,camera)}
 $('loading').hidden=true;requestAnimationFrame(animate);
