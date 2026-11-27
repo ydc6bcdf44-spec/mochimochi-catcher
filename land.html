@@ -24,9 +24,9 @@ let arcade=read(arcadeKey,{money:1000,owned:{},plays:0});let defaults={name:'も
 let data=read(roomKey,{});data={avatar:{...defaults,...data.avatar},pets:data.pets||[],bond:data.bond||{},theme:data.theme||'pink',furniture:data.furniture||[],daily:data.daily||''};
 function save(){write(roomKey,data)}function refreshMoney(){arcade=read(arcadeKey,arcade);$('money').textContent='¥'+Number(arcade.money||0).toLocaleString()}function spend(n){refreshMoney();if(arcade.money<n){toast('コインが足りません');return false}arcade.money-=n;write(arcadeKey,arcade);refreshMoney();return true}refreshMoney();
 let toastTimer;function toast(t){$('toast').textContent=t;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),1900)}
-let scene=new T.Scene();scene.background=new T.Color(0xeee2ed);let renderer=new T.WebGLRenderer({canvas:$('scene'),antialias:true,preserveDrawingBuffer:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
+let scene=new T.Scene();scene.background=new T.Color(0xeee2ed);let renderer=new T.WebGLRenderer({canvas:$('scene'),antialias:true,preserveDrawingBuffer:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.02;
 let camera=new T.PerspectiveCamera(37,1,.1,60),controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.enablePan=false;controls.maxPolarAngle=Math.PI*.44;controls.minPolarAngle=.25;controls.minDistance=2.6;controls.maxDistance=22;function resetView(){camera.position.set(9,8.5,11);controls.target.set(0,1,0);controls.update()}resetView();$('resetView').onclick=resetView;function resize(){let w=$('stage').clientWidth,h=$('stage').clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.fov=T.MathUtils.radToDeg(2*Math.atan(Math.max(Math.tan(.34),Math.tan(.34)/camera.aspect)));camera.updateProjectionMatrix()}new ResizeObserver(resize).observe($('stage'));resize();
-scene.add(new T.HemisphereLight(0xfff8ee,0xc4b3d2,1.75));let sun=new T.DirectionalLight(0xfff1db,2.8);sun.position.set(-4,8,6);sun.castShadow=true;sun.shadow.mapSize.set(1536,1536);Object.assign(sun.shadow.camera,{left:-7,right:7,top:7,bottom:-7,near:.1,far:25});sun.shadow.normalBias=.018;sun.shadow.radius=3;sun.shadow.bias=-.00015;scene.add(sun);let fill=new T.DirectionalLight(0xe1f0ff,1.1);fill.position.set(5,4,-4);scene.add(fill);const bounce=new T.DirectionalLight(0xffe4ef,.55);bounce.position.set(0,3,6);scene.add(bounce);
+scene.add(new T.HemisphereLight(0xfff9f2,0xe4d5e7,2.05));let sun=new T.DirectionalLight(0xfff3e5,2.0);sun.position.set(-3,9,4);sun.castShadow=true;sun.shadow.mapSize.set(1536,1536);Object.assign(sun.shadow.camera,{left:-7,right:7,top:7,bottom:-7,near:.1,far:25});sun.shadow.normalBias=.018;sun.shadow.radius=3;sun.shadow.bias=-.00015;scene.add(sun);let fill=new T.DirectionalLight(0xe1f0ff,1.1);fill.position.set(5,4,-4);scene.add(fill);const bounce=new T.DirectionalLight(0xfff5f3,.90);bounce.position.set(0,3,6);scene.add(bounce);
 const mat=(c,r=.65,m=0)=>new T.MeshStandardMaterial({color:c,roughness:r,metalness:m});function mesh(g,m,parent=scene){let o=new T.Mesh(g,m);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o}
 const ellGeo=new T.SphereGeometry(1,24,18),roundCache=new Map();function ell(parent,m,x,y,z,sx,sy,sz){let o=mesh(ellGeo,m,parent);o.position.set(x,y,z);o.scale.set(sx,sy,sz);return o}function B(parent,m,x,y,z,w,h,d,r=.08){let k=[w,h,d,r].join(',');let geo=roundCache.get(k);if(!geo){geo=new RoundedBoxGeometry(w,h,d,2,Math.min(r,w*.45,h*.45,d*.45));roundCache.set(k,geo)}let o=mesh(geo,m,parent);o.position.set(x,y,z);return o}
 let tc=document.createElement('canvas');tc.width=tc.height=128;let ctx=tc.getContext('2d'),fd=ctx.createImageData(128,128);let seed=(Date.now()>>>0)||312;function rng(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}for(let i=0;i<fd.data.length;i+=4){let q=155+Math.floor(rng()*100);fd.data[i]=fd.data[i+1]=fd.data[i+2]=q;fd.data[i+3]=255}ctx.putImageData(fd,0,0);let bump=new T.CanvasTexture(tc);bump.wrapS=bump.wrapT=T.RepeatWrapping;bump.repeat.set(5,4);
@@ -151,7 +151,7 @@ let furniture=new T.Group();scene.add(furniture);function showFurniture(){furnit
 function theme(){let t=data.theme;wallMat.color.set(t==='blue'?0xd8eaf5:t==='cream'?0xf6ebd7:0xf3dce8);rugMat.color.set(t==='blue'?0xb8d5e7:t==='cream'?0xe2c7a5:0xe2b9cf);scene.background.set(t==='blue'?0xe3edf5:t==='cream'?0xf1e9d9:0xeee2ed)}theme();document.querySelectorAll('[data-theme]').forEach(b=>b.onclick=()=>{data.theme=b.dataset.theme;theme();save()});
 let avatar=new T.Group();scene.add(avatar);let avatarVisual=new T.Group();avatar.add(avatarVisual);let legs=[],arms=[];const importedPivot=new T.Group();avatar.add(importedPivot);let importedModel=null,importedActive=false,importedAngle=Number(localStorage.getItem('mochi-model-angle')||0);
 function makeAvatar(){
- const oldM=new Set();avatarVisual.traverse(o=>{if(o.userData.avatarGeo)o.geometry.dispose();if(o.isMesh&&o.material?.userData?.avatarMaterial)oldM.add(o.material)});for(let m of oldM)m.dispose();
+ const oldM=new Set();avatarVisual.traverse(o=>{if(o.userData.avatarGeo)o.geometry.dispose();if(o.isMesh&&o.material?.userData?.avatarMaterial)oldM.add(o.material)});for(let m of oldM){m.userData.faceMap?.dispose();m.dispose();}
  avatarVisual.clear();legs=[];arms=[];const a=data.avatar,g=avatarVisual;
  function M(c,roughness=.88){let m=new T.MeshStandardMaterial({color:c,roughness,metalness:0});m.userData.avatarMaterial=true;return m}
  const skin=M(a.skin,.89),hair=M(a.hairColor,.83),hairDark=M(new T.Color(a.hairColor).multiplyScalar(.88)),hairLight=M(new T.Color(a.hairColor).lerp(new T.Color(0xffffff),.11)),clothes=M(a.clothColor),hem=M(new T.Color(a.clothColor).multiplyScalar(.88)),milk=M(0xfff8ec),pink=M(0xe6a3a3),dark=M(0x493838),eyeM=M(a.eyeColor,.65),sole=M(0xd2b7a0),buttonM=M(0xe5c19a);
@@ -159,52 +159,69 @@ function makeAvatar(){
  function custom(geo,m,parent=g){let o=mesh(geo,m,parent);o.userData.avatarGeo=true;return o}
  function tube(m,pts,r=.01,parent=g){return custom(new T.TubeGeometry(new T.CatmullRomCurve3(pts.map(p=>V(...p))),18,r,8,false),m,parent)}
  // Original soft mascot: one broad continuous face, small body, simple embroidered features.
- const cy=1.275,rx=.455,ry=.448,rz=.392;
+ const cy=1.29,rx=.425,ry=.425,rz=.373;
  E(skin,0,cy,0,rx,ry,rz);
  E(skin,0,.83,0,.125,.13,.118);
- for(let q of [-1,1]){E(skin,q*.432,1.19,-.002,.078,.099,.072);E(pink,q*.465,1.192,.045,.026,.048,.017)}
- // Smooth custom hair shell with a varying hairline; no segmented plastic spheres.
- const verts=[],idx=[],N=72,R=25;
+ for(let q of [-1,1]){E(skin,q*.405,1.20,-.002,.070,.084,.062);E(pink,q*.436,1.20,.041,.021,.035,.012)}
+ // A continuous sculpted hair shell with rounded edge and a single coherent fringe.
+ const bob=a.hair==='bob',long=a.hair==='long',N=112,R=42;
+ const hv=[],hi=[],hcolors=[],hc=new T.Color(a.hairColor);
+ function hairPoint(u,t){
+  let c=Math.cos(u),sn=Math.sin(u),side=Math.abs(sn),ang=Math.atan2(sn,c),front=T.MathUtils.smoothstep(c,.04,.72);
+  let fringe=a.bangs==='straight'?1.17+.055*Math.cos(ang*15)-.045*Math.cos(ang*5):a.bangs==='side'?1.12+.17*Math.sin(ang*2.6)+.045*Math.cos(ang*10):.91+.26*T.MathUtils.smoothstep(Math.abs(ang),0,.85);
+  let endBack=long?2.02:bob?2.08:1.82,end=fringe*front+endBack*(1-front);
+  let v=t*end,lower=T.MathUtils.smoothstep(v,1.40,endBack+.001),extended=(long?.28:bob?.055:0)*(1-front)*lower;
+  let rr=Math.sin(v),full=(long||bob)?T.MathUtils.lerp(rr,Math.max(rr,.88),lower*(1-front)):rr;
+  let grooves=1+.009*Math.cos(ang*13+.35*Math.sin(v*3))*Math.sin(v);
+  let edgeRound=t>.93?1-.035*Math.pow((t-.93)/.07,2):1;
+  let x=Math.sin(u)*.457*full*grooves*edgeRound;
+  let z=Math.cos(u)*.407*full*grooves*edgeRound-.025;
+  let y=cy+.022+.466*Math.cos(v)-extended;
+  return [x,y,z];
+ }
  for(let j=0;j<=R;j++)for(let k=0;k<=N;k++){
-  let u=k/N*Math.PI*2,c=Math.cos(u),side=Math.abs(Math.sin(u)),end=c>=0?1.04+.72*Math.pow(side,2):1.76+.54*(-c),t=j/R*end;
-  let ripple=1+.012*Math.sin(u*9)*Math.sin(t);verts.push(Math.sin(t)*Math.sin(u)*.476*ripple,cy+.015+Math.cos(t)*.468,Math.sin(t)*Math.cos(u)*.412-.018);
-  if(j<R&&k<N){let v=j*(N+1)+k;idx.push(v,v+1,v+N+1,v+1,v+N+2,v+N+1)}
+  let u=k/N*Math.PI*2,t=j/R,p=hairPoint(u,t);hv.push(...p);
+  let shade=1+.033*Math.sin(u*13+.42*Math.sin(t*4))-.045*Math.pow(t,4);
+  let col=hc.clone().multiplyScalar(shade);hcolors.push(col.r,col.g,col.b);
+  if(j<R&&k<N){let i=j*(N+1)+k;hi.push(i,i+1,i+N+1,i+1,i+N+2,i+N+1)}
  }
- let cap=new T.BufferGeometry();cap.setAttribute('position',new T.Float32BufferAttribute(verts,3));cap.setIndex(idx);cap.computeVertexNormals();hair.side=T.DoubleSide;custom(cap,hair);
- function lock(pts,w,d,m=hair){
-  let path=new T.CatmullRomCurve3(pts.map(p=>V(...p))),vs=[],is=[],n=22,k=18;
-  for(let j=0;j<=n;j++){let t=j/n,p=path.getPoint(t),dir=path.getTangent(t),side=V(dir.y,-dir.x,0).normalize();if(side.lengthSq()<.01)side.set(1,0,0);let normal=new T.Vector3().crossVectors(side,dir).normalize();let f=Math.max(.025,Math.pow(Math.sin(Math.PI*t),.40));for(let h=0;h<=k;h++){let ang=h/k*Math.PI*2,v=p.clone().addScaledVector(side,Math.cos(ang)*w*f).addScaledVector(normal,Math.sin(ang)*d*f);vs.push(v.x,v.y,v.z);if(j<n&&h<k){let i=j*(k+1)+h;is.push(i,i+1,i+k+1,i+1,i+k+2,i+k+1)}}}
-  let geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(vs,3));geo.setIndex(is);geo.computeVertexNormals();m.side=T.DoubleSide;return custom(geo,m)
- }
- const bob=a.hair==='bob',long=a.hair==='long';
- if(bob||long){
-  let low=long?.55:.88;
-  E(hair,0,1.11-(long?.12:0),-.19,.455,long?.57:.42,.25);
-  for(let q of [-1,1]){
-   lock([[q*.20,1.66,-.055],[q*.415,1.42,.025],[q*.455,1.10,.035],[q*.38,low+.11,.125],[q*.26,low,.105]],.132,.104);
-   lock([[q*.27,1.58,-.20],[q*.445,1.25,-.20],[q*.43,low+.10,-.14],[q*.31,low,-.10]],.105,.10,hairDark);
-  }
- }else if(a.hair==='twin'){for(let q of [-1,1]){E(hair,q*.45,1.32,-.10,.19,.30,.18,q*.18);lock([[q*.34,1.48,-.13],[q*.58,1.32,-.10],[q*.53,1.02,.01],[q*.42,.91,.03]],.15,.125);E(pink,q*.43,1.44,-.005,.08,.052,.05)}}
- else if(a.hair==='bun'){E(hair,0,1.77,-.11,.22,.19,.20);E(hairDark,0,1.655,-.12,.17,.055,.16)}
- else{for(let q of [-1,1])lock([[q*.23,1.61,-.05],[q*.405,1.43,.05],[q*.40,1.18,.08]],.115,.092)}
- // Soft sculpted fringe. Broad flowing locks rather than thin noodles.
- if(a.bangs==='straight'){for(let j=0;j<5;j++){let x=(j-2)*.148;lock([[x*.48,1.70,.085],[x*.82,1.61,.265],[x,1.47+.022*Math.abs(j-2),.375],[x+.035,1.425+.035*Math.abs(j-2),.336]],.111,.055,j===0?hairLight:hair)}}
- else if(a.bangs==='side'){for(let j=0;j<4;j++){let x=-.25+j*.126;lock([[.11+j*.052,1.71,.085],[.11+j*.012,1.64,.253],[x,1.50,.375],[x-.075,1.39+.08*Math.abs(x),.325]],.126,.057,j===0?hairLight:hair)}}
- else for(let q of [-1,1])lock([[q*.024,1.72,.10],[q*.13,1.62,.29],[q*.28,1.51,.345],[q*.38,1.34,.217]],.15,.062);
- // Face details stay on the ellipsoid surface, avoiding bulging realistic eyeballs.
- function faceZ(x,y){return rz*Math.sqrt(Math.max(.001,1-(x/rx)**2-((y-cy)/ry)**2))}
- function mark(m,x,y,w,h,th=.007,rot=0){let z=faceZ(x,y);let o=E(m,x,y,z+.001,w,h,th,rot);o.rotation.y=Math.atan2(x/rx,z/rz)*.62;return o}
+ // Turn the last ring inward to give the edge thickness instead of a paper cut.
+ for(let k=0;k<=N;k++){let p=hairPoint(k/N*Math.PI*2,1);hv.push(p[0]*.89,p[1]+.025,p[2]*.89);let c=hc.clone().multiplyScalar(.88);hcolors.push(c.r,c.g,c.b);if(k<N){let i=R*(N+1)+k;hi.push(i,i+1,i+N+1,i+1,i+N+2,i+N+1)}}
+ let cap=new T.BufferGeometry();cap.setAttribute('position',new T.Float32BufferAttribute(hv,3));cap.setAttribute('color',new T.Float32BufferAttribute(hcolors,3));cap.setIndex(hi);cap.computeVertexNormals();let shell=M(0xffffff,.76);shell.vertexColors=true;shell.side=T.DoubleSide;custom(cap,shell);
+ // Tied styles are sculpted as rounded masses, not hanging fringe blocks.
+ if(a.hair==='twin'){for(let q of [-1,1]){E(hair,q*.415,1.34,-.10,.15,.25,.155,q*.28);E(hair,q*.448,1.18,-.065,.145,.19,.142,q*.20);E(pink,q*.405,1.45,.015,.070,.046,.048)}}
+ if(a.hair==='bun'){E(hair,0,1.81,-.14,.19,.165,.18);E(hairDark,0,1.67,-.15,.15,.047,.14)}
+ // The face is a single painted texture on the skin surface: no protruding plastic eye pieces.
+ const fc=document.createElement('canvas');fc.width=1024;fc.height=1024;const cx=fc.getContext('2d');
+ const xmin=-.355,xmax=.355,ymin=1.005,ymax=1.465;
+ const X=x=>(x-xmin)/(xmax-xmin)*1024,Y=y=>(ymax-y)/(ymax-ymin)*1024;
+ function oval(x,y,w,h,c){cx.fillStyle=c;cx.beginPath();cx.ellipse(X(x),Y(y),w/(xmax-xmin)*1024,h/(ymax-ymin)*1024,0,0,Math.PI*2);cx.fill()}
+ function line(points,c,w){cx.strokeStyle=c;cx.lineWidth=w;cx.lineCap='round';cx.lineJoin='round';cx.beginPath();cx.moveTo(X(points[0][0]),Y(points[0][1]));for(let i=1;i<points.length;i++)cx.lineTo(X(points[i][0]),Y(points[i][1]));cx.stroke()}
  for(let q of [-1,1]){
-  let x=q*.155,y=1.265,h=a.eye==='round'?.052:a.eye==='almond'?.043:.033;
-  mark(eyeM,x,y,.036,h,.009,q*(a.eye==='sleepy'?.18:0));
-  mark(milk,x-.009,y+.014,.009,.011,.008);
-  if(a.blush==='on')mark(pink,q*.252,1.170,.057,.030,.005);
+  let x=q*.157,y=1.294,h=a.eye==='round'?.072:a.eye==='almond'?.059:.045,w=a.eye==='round'?.048:.053;
+  oval(x,y,w,h,'#44323a');oval(x,y-.009,w*.80,h*.79,a.eyeColor);
+  oval(x,y+.010,w*.53,h*.57,'#322831');oval(x-.014,y+.025,.015,.018,'#fffaf2');oval(x+.017,y-.027,.007,.008,'#fff5e7');
+  if(a.eye!=='sleepy'){line([[x-w*.96,y+.027],[x-w*.75,y+.055],[x-w*.23,y+h*.94],[x+w*.35,y+h*.85],[x+w*.88,y+.037]],'#49343a',6);}
+  line([[x-.039,1.408],[x,1.419],[x+.034,1.409]],'#866b62',7);
+  if(a.blush==='on'){let px=X(q*.238),py=Y(1.179),r=90,gr=cx.createRadialGradient(px,py,5,px,py,r);gr.addColorStop(0,'rgba(238,125,143,.66)');gr.addColorStop(.55,'rgba(238,125,143,.30)');gr.addColorStop(1,'rgba(238,125,143,0)');cx.save();cx.translate(px,py);cx.scale(1,.66);cx.fillStyle=gr;cx.translate(-px,-py);cx.beginPath();cx.arc(px,py,r,0,Math.PI*2);cx.fill();cx.restore()}
  }
- let smile=[[-.033,1.16],[0,1.147],[.033,1.16]].map(([x,y])=>[x,y,faceZ(x,y)+.009]);tube(dark,smile,.007);
+ oval(0,1.206,.013,.009,'#d6a492');
+ cx.strokeStyle='#925d5b';cx.lineWidth=8;cx.lineCap='round';cx.beginPath();cx.moveTo(X(-.031),Y(1.146));cx.quadraticCurveTo(X(0),Y(1.119),X(.031),Y(1.146));cx.stroke();
+ let faceTex=new T.CanvasTexture(fc);faceTex.colorSpace=T.SRGBColorSpace;faceTex.anisotropy=4;
+ let fv=[],fu=[],fi=[],nx=48,ny=36;for(let j=0;j<=ny;j++)for(let k=0;k<=nx;k++){let u=k/nx,v=j/ny,x=xmin+u*(xmax-xmin),y=ymin+v*(ymax-ymin),z=rz*Math.sqrt(Math.max(.001,1-(x/rx)**2-((y-cy)/ry)**2));fv.push(x,y,z+.0035);fu.push(u,v);if(j<ny&&k<nx){let i=j*(nx+1)+k;fi.push(i,i+1,i+nx+1,i+1,i+nx+2,i+nx+1)}}
+ let faceGeo=new T.BufferGeometry();faceGeo.setAttribute('position',new T.Float32BufferAttribute(fv,3));faceGeo.setAttribute('uv',new T.Float32BufferAttribute(fu,2));faceGeo.setIndex(fi);faceGeo.computeVertexNormals();let fm=new T.MeshBasicMaterial({map:faceTex,transparent:true,depthWrite:false,alphaTest:.015,polygonOffset:true,polygonOffsetFactor:-1,side:T.DoubleSide,toneMapped:false});fm.userData.avatarMaterial=true;fm.userData.faceMap=faceTex;let faceMesh=custom(faceGeo,fm);faceMesh.castShadow=false;faceMesh.receiveShadow=false;faceMesh.renderOrder=2;
  // Compact round body with layered dress, soft collar and little shoes.
- E(clothes,0,.65,0,.218,.226,.177);
+ E(clothes,0,.67,0,.217,.228,.171);
  function dress(profile,m,pleats=0){let vs=[],is=[],n=56;for(let j=0;j<profile.length;j++){let [y,w,d]=profile[j];for(let k=0;k<=n;k++){let t=k/n*Math.PI*2,fold=1+pleats*j/(profile.length-1)*Math.cos(t*10);vs.push(Math.cos(t)*w*fold,y,Math.sin(t)*d*fold);if(j<profile.length-1&&k<n){let i=j*(n+1)+k;is.push(i,i+1,i+n+1,i+1,i+n+2,i+n+1)}}}let geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(vs,3));geo.setIndex(is);geo.computeVertexNormals();m.side=T.DoubleSide;custom(geo,m)}
- if(a.outfit==='dress'){dress([[.69,.18,.15],[.60,.22,.18],[.49,.27,.21],[.38,.30,.23],[.35,.285,.22]],clothes,.055);dress([[.39,.30,.23],[.355,.29,.222]],milk,.055);for(let q of [-1,1])E(milk,q*.073,.785,.148,.088,.042,.042,q*.36);for(let j=0;j<2;j++)E(buttonM,0,.69-j*.058,.178,.014,.014,.009)}
+ if(a.outfit==='dress'){
+ dress([[.71,.173,.148],[.65,.184,.157],[.58,.203,.174],[.51,.239,.194],[.43,.275,.218],[.385,.288,.225],[.375,.28,.22]],clothes,.035);
+ dress([[.375,.28,.22],[.355,.276,.216]],milk,.035);
+ dress([[.655,.183,.157],[.622,.192,.163]],hem,.0);
+ for(let q of [-1,1]){E(milk,q*.069,.795,.145,.085,.038,.035,q*.36);E(hem,q*.053,.65,.172,.064,.033,.022,q*.3)}
+ E(buttonM,0,.65,.194,.023,.025,.015);for(let j=0;j<2;j++)E(milk,0,.755-j*.042,.174,.012,.012,.007);
+ // A small embroidered hem and gathered cuffs.
+ for(let j=0;j<18;j++){let t=j*Math.PI*2/18;E(milk,Math.cos(t)*.276,.359,Math.sin(t)*.216,.025,.013,.020)}
+ }
  else if(a.outfit==='hoodie'){E(clothes,0,.80,-.12,.236,.12,.13);B(g,hem,0,.48,0,.39,.055,.30,.024);B(g,clothes,0,.56,.16,.22,.11,.04,.045);for(let q of [-1,1])tube(milk,[[q*.055,.80,.15],[q*.07,.72,.186],[q*.08,.66,.18]],.008)}
  else if(a.outfit==='overalls'){E(milk,0,.67,0,.216,.215,.17);B(g,clothes,0,.62,.135,.27,.24,.095,.04);for(let q of [-1,1]){B(g,clothes,q*.10,.78,.14,.046,.16,.045,.013);E(buttonM,q*.10,.70,.195,.016,.016,.010)}}
  else {B(g,hem,0,.49,0,.36,.05,.28,.024);for(let q of [-1,1])E(milk,q*.07,.785,.148,.085,.038,.035,q*.30)}
@@ -213,9 +230,9 @@ function makeAvatar(){
   let arm=new T.Group();arm.position.set(q*.195,.735,0);g.add(arm);arm.rotation.z=q*.27;
   E(clothes,q*.047,-.075,.002,.098,.125,.102,0,arm);E(a.outfit==='dress'?milk:hem,q*.064,-.152,.008,.077,.038,.078,0,arm);E(skin,q*.075,-.211,.014,.070,.077,.073,0,arm);arms.push(arm);
   let leg=new T.Group();leg.position.set(q*.123,.365,0);g.add(leg);E(pants,0,-.095,0,.086,.139,.085,0,leg);if(a.outfit==='dress')E(milk,0,-.21,0,.088,.067,.086,0,leg);
-  E(sole,0,-.307,.055,.127,.043,.160,0,leg);E(milk,0,-.267,.052,.123,.084,.154,0,leg);E(hem,0,-.206,.105,.081,.018,.036,0,leg);legs.push(leg)
+  E(sole,0,-.307,.055,.117,.038,.146,0,leg);E(a.outfit==='dress'?hem:milk,0,-.267,.052,.114,.078,.140,0,leg);E(milk,0,-.220,.102,.080,.024,.054,0,leg);E(a.outfit==='dress'?hem:sole,0,-.202,.107,.086,.016,.024,0,leg);E(buttonM,q*.063,-.206,.126,.015,.015,.012,0,leg);legs.push(leg)
  }
- if(a.hat==='bow'){E(pink,-.31,1.62,.15,.122,.074,.055,.45);E(pink,-.145,1.686,.15,.122,.074,.055,-.43);E(milk,-.226,1.652,.194,.048,.043,.038)}
+ if(a.hat==='bow'){E(pink,-.319,1.60,.21,.107,.060,.042,.45);E(pink,-.179,1.657,.24,.107,.060,.042,-.42);E(pink,-.252,1.628,.276,.042,.037,.027);E(pink,-.286,1.565,.25,.029,.065,.019,-.32);E(pink,-.226,1.571,.27,.028,.059,.019,.24)}
  else if(a.hat==='bear')for(let q of [-1,1]){E(hair,q*.30,1.70,-.02,.135,.134,.10);E(pink,q*.30,1.71,.061,.076,.079,.030)}
  else if(a.hat==='beret'){E(clothes,0,1.735,-.03,.43,.115,.35,-.13);E(clothes,.025,1.84,0,.036,.052,.039)}
  g.scale.set(1,Number(a.height),1);g.position.y=.02;if(importedActive)importedPivot.scale.setScalar(Number(a.height));
@@ -241,7 +258,7 @@ $('pet').onclick=()=>happy(2);$('feed').onclick=()=>{if(selected!==null&&spend(2
 let placing=null,preview=null;function shop(){let list=$('items');list.replaceChildren();for(let item of furnitureTypes){let div=document.createElement('div');div.className='item';let color=document.createElement('div');color.className='swatch';color.style.background=item.color;let sp=document.createElement('span');sp.textContent=item.name;let sm=document.createElement('small');sm.textContent='¥'+item.price;sp.append(sm);let btn=document.createElement('button');btn.textContent='配置して購入';btn.onclick=()=>{if(preview)scene.remove(preview);placing={...item,r:0};preview=furnitureModel(item.id);preview.position.set(0,0,2);scene.add(preview);$('rotate').disabled=$('cancel').disabled=false;toast('床をタップして購入・配置')};div.append(color,sp,btn);list.append(div)}let h=document.createElement('h3');h.textContent='購入済み家具';list.append(h);data.furniture.forEach((a,i)=>{let div=document.createElement('div');div.className='item';let sp=document.createElement('span');sp.textContent=furnitureTypes.find(t=>t.id===a.id)?.name||a.id;let b=document.createElement('button');b.textContent='移動';b.onclick=()=>{if(preview)scene.remove(preview);placing={...furnitureTypes.find(t=>t.id===a.id),r:a.r,index:i};preview=furnitureModel(a.id);preview.position.set(a.x,0,a.z);preview.rotation.y=a.r;scene.add(preview);$('rotate').disabled=$('cancel').disabled=false;toast('床をタップして移動')};let del=document.createElement('button');del.textContent='売却';del.onclick=()=>{if(placing)return;let item=furnitureTypes.find(t=>t.id===a.id);data.furniture.splice(i,1);refreshMoney();arcade.money+=Math.floor(item.price/2);write(arcadeKey,arcade);refreshMoney();save();showFurniture();shop()};div.append(sp,b,del);list.append(div)})}shop();
 function stopPlace(){if(preview)scene.remove(preview);preview=null;placing=null;$('rotate').disabled=$('cancel').disabled=true} $('cancel').onclick=stopPlace;$('rotate').onclick=()=>{if(placing){placing.r+=Math.PI/2;preview.rotation.y=placing.r}};
 function place(p){let a=placing;if(!a)return;let x=Math.round(p.x*4)/4,z=Math.round(p.z*4)/4;let swap=Math.abs(Math.sin(a.r))>.5,w=(swap?a.size[1]:a.size[0])/2,d=(swap?a.size[0]:a.size[1])/2;if(Math.abs(x)+w>3.92||Math.abs(z)+d>3.4){toast('お部屋の内側を選んでね');return}let coll=[...fixedFurniture,...data.furniture.filter((_,i)=>i!==a.index)].some(b=>{let t=furnitureTypes.find(k=>k.id===b.id),sw=Math.abs(Math.sin(b.r||0))>.5;return Math.abs(x-b.x)<w+(sw?t.size[1]:t.size[0])/2-.04&&Math.abs(z-b.z)<d+(sw?t.size[0]:t.size[1])/2-.04});if(coll){toast('家具が重なっています');return}if(a.index===undefined&&!spend(a.price))return;let entry={id:a.id,x,z,r:a.r};if(a.index===undefined)data.furniture.push(entry);else data.furniture[a.index]=entry;stopPlace();save();showFurniture();shop();toast('家具を配置しました')}
-let activeTab='home';function tab(id){let was=activeTab;activeTab=id;document.querySelectorAll('.panel').forEach(e=>e.hidden=e.id!==id);document.querySelectorAll('[data-tab]').forEach(e=>e.classList.toggle('active',e.dataset.tab===id));if(id!=='shop')stopPlace();if(id==='avatar'&&was!=='avatar'){avatar.rotation.y=0;target.copy(avatar.position);controls.target.set(avatar.position.x,.96,avatar.position.z);camera.position.set(avatar.position.x+.10,1.52,avatar.position.z+3.7);controls.update()}else if(was==='avatar'&&id!=='avatar')resetView()}document.querySelectorAll('[data-tab]').forEach(e=>e.onclick=()=>tab(e.dataset.tab));$('goAvatar').onclick=()=>tab('avatar');$('goShop').onclick=()=>tab('shop');
+let activeTab='home';function tab(id){let was=activeTab;activeTab=id;document.querySelectorAll('.panel').forEach(e=>e.hidden=e.id!==id);document.querySelectorAll('[data-tab]').forEach(e=>e.classList.toggle('active',e.dataset.tab===id));if(id!=='shop')stopPlace();if(id==='avatar'&&was!=='avatar'){avatar.rotation.y=0;target.copy(avatar.position);controls.target.set(avatar.position.x,.96,avatar.position.z);camera.position.set(avatar.position.x+.10,1.27,avatar.position.z+3.7);controls.update()}else if(was==='avatar'&&id!=='avatar')resetView()}document.querySelectorAll('[data-tab]').forEach(e=>e.onclick=()=>tab(e.dataset.tab));$('goAvatar').onclick=()=>tab('avatar');$('goShop').onclick=()=>tab('shop');
 function today(){let d=new Date();return [d.getFullYear(),d.getMonth()+1,d.getDate()].join('-')}function daily(){let got=data.daily===today();$('daily').disabled=got;$('daily').textContent=got?'受け取り済み':'受け取る +500'}daily();$('daily').onclick=()=>{if(data.daily===today())return;refreshMoney();arcade.money+=500;write(arcadeKey,arcade);data.daily=today();save();refreshMoney();daily();toast('ログインボーナス +500')};
 window.addEventListener('storage',e=>{if(e.key===arcadeKey)syncPets()});window.addEventListener('pageshow',()=>syncPets());
 let ray=new T.Raycaster(),pointer=new T.Vector2(),plane=new T.Plane(V(0,1,0),0),target=avatar.position.clone(),down=null;function cast(e){let rect=renderer.domElement.getBoundingClientRect();pointer.set((e.clientX-rect.left)/rect.width*2-1,-(e.clientY-rect.top)/rect.height*2+1);ray.setFromCamera(pointer,camera);let p=V(0,0,0);return ray.ray.intersectPlane(plane,p)?p:null}
