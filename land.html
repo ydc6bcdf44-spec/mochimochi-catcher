@@ -246,14 +246,14 @@ async function putModel(value){let db=await modelDB();try{await new Promise((res
 function setImported(on){importedActive=!!on&&!!importedModel;avatarVisual.visible=!importedActive;importedPivot.visible=importedActive;$('rigEditor').hidden=!importedActive;$('atlasEditor').hidden=!rigAtlas;$('modularEditor').hidden=!modular;$('rigNote').textContent=modular?'髪型・服・小物を実際の3Dパーツで交換できます。':rigAtlas?'元の配色を初期表示します。配色・表情は試験的な調整です。衣装・髪の形は固定です。':'このモデルは骨格・アニメーションの設定に対応します。';rigPreview=false;$('previewWalk').textContent='歩行プレビュー';if(!importedActive&&importMixer){importMixer.stopAllAction();importPlaying=null;rigLastPose=null;resetBones()}importedPivot.scale.setScalar(Number(data.avatar.height));$('modelToggle').disabled=!importedModel;$('modelToggle').textContent=importedActive?'元のアバターに戻す':'専用モデルに切替';$('modelTurn').disabled=!importedActive;$('customHint').textContent=importedActive?'専用モデル使用中：上の専用アバター編集で配色・動作を調整できます。名前・身長も変更できます。':'着せ替えは無料。変更は自動保存されます。';for(let k of fields)$(k).disabled=importedActive&&!['name','height'].includes(k);$('random').disabled=importedActive;try{localStorage.setItem('mochi-custom-active',importedActive?'1':'0')}catch{}}
 const rigDefaults={rigHair:'original',rigClothes:'original',rigEye:'original',rigFace:'original',rigWalk:'cute',rigStand:'idle'};
 let rigPrefs={...rigDefaults,...read('mochi-rig-style-v2',{})};
-let modular=null;const modDefaults={modHair:'1',modTop:'tshirt',modBottom:'skirt',modAccessory:'none',modHairColor:'original',modTopColor:'#ffffff',modBottomColor:'#ffffff'};let modPrefs={...modDefaults,...read('mochi-modular-v1',{})};
+let modular=null;const modDefaults={modHair:'1',modTop:'tshirt',modBottom:'skirt',modAccessory:'none',modHairColor:'original',modTopColor:'#ffffff',modBottomColor:'#ffffff'};let modPrefs={...modDefaults,...read('mochi-modular-v1',{})};for(let key of ['modHair','modTop','modBottom','modAccessory','modHairColor'])if(![...$(key).options].some(o=>o.value===modPrefs[key]))modPrefs[key]=modDefaults[key];
 const modKey=n=>n.toLowerCase().replace(/[^a-z0-9]/g,'');
 function applyModular(){
  if(!modular)return;
  for(let [k,o] of Object.entries(modular.parts)){
   o.visible=k==='hairstyle1'?modPrefs.modHair==='1':k==='hairstyle2'?modPrefs.modHair==='2':k==='tshirt'?modPrefs.modTop==='tshirt':k==='hoodie'?modPrefs.modTop==='hoodie':k==='skirt'?modPrefs.modBottom==='skirt':k==='shorts'?modPrefs.modBottom==='shorts':k==='bodyarm'?modPrefs.modTop!=='hoodie':true;
   let tint=k.startsWith('hairstyle')?modPrefs.modHairColor:['tshirt','hoodie'].includes(k)?modPrefs.modTopColor:['skirt','shorts'].includes(k)?modPrefs.modBottomColor:'original';
-  for(let m of [].concat(o.material)){if(k.startsWith('hairstyle')){m.map=tint==='original'?m.userData.originalMap:null;m.needsUpdate=true}m.color.set(tint==='original'?'#ffffff':tint)}
+  for(let m of [].concat(o.material)){if(k.startsWith('hairstyle')){m.map=tint==='original'?m.userData.originalMap:m.userData.tintMap||m.userData.originalMap;m.needsUpdate=true}m.color.set(tint==='original'?'#ffffff':tint)}
  }
  for(let [k,g] of Object.entries(modular.accessories))g.visible=modPrefs.modAccessory===k;
 }
@@ -275,6 +275,7 @@ function prepareAnimations(root,clips){
   if(/pose[_ .-]?0?[123]/.test(n)){let no=n.match(/pose[_ .-]?0?([123])/)[1],key='pose'+no;if(!importActions[key]){let act=importMixer.clipAction(clip);act.setLoop(T.LoopOnce,1);act.clampWhenFinished=true;importActions[key]=act;stand.add(new Option('収録ポーズ '+no,key))}}
  }
  root.updateMatrixWorld(true);
+ if(modular){modular.feet={};for(let side of ['left','right']){let foot=rigBones[side+'foot'];if(foot)modular.feet[side]=importedModel.worldToLocal(foot.getWorldPosition(new T.Vector3()))}}
  for(let [k,b] of Object.entries(rigBones)){let inv=b.getWorldQuaternion(new T.Quaternion()).invert();rigAxes[k]={x:V(1,0,0).applyQuaternion(inv).normalize(),y:V(0,1,0).applyQuaternion(inv).normalize(),z:V(0,0,1).applyQuaternion(inv).normalize()}}
  syncRigFields();
 }
@@ -297,13 +298,28 @@ function relaxRigArms(phase,blend,walk){
  for(let [side,shift] of [['left',0],['right',Math.PI]]){
   let upper=rigBones[side+'arm'],lower=rigBones[side+'forearm'],hand=rigBones[side+'hand'];if(!upper||!lower)continue;
   upper.updateWorldMatrix(true,true);
-  let outward=upper.getWorldPosition(new T.Vector3()).sub(rigBones.spine2?.getWorldPosition(new T.Vector3())||importedPivot.getWorldPosition(new T.Vector3()));outward.y=0;
+  let other=rigBones[(side==='left'?'right':'left')+'arm'];let outward=upper.getWorldPosition(new T.Vector3()).sub(other?.getWorldPosition(new T.Vector3())||rigBones.spine2?.getWorldPosition(new T.Vector3())||importedPivot.getWorldPosition(new T.Vector3()));outward.y=0;
   if(outward.lengthSq()<.0001)outward.set(side==='left'?1:-1,0,0);outward.normalize();
   let swing=Math.sin(phase+shift)*blend*(walk==='skip'?.25:walk==='slow'?.13:.20);
   let dir=new T.Vector3(0,-1,0).addScaledVector(outward,.23).addScaledVector(forward,swing+.035).normalize();
   aimRigBone(upper,lower,dir);
   if(hand){let fore=new T.Vector3(0,-1,0).addScaledVector(outward,.12).addScaledVector(forward,swing+.13+blend*.035).normalize();aimRigBone(lower,hand,fore)}
  }
+}
+// Solve two bone leg chains toward a stride target; preserve the sole orientation.
+function stepModularLeg(side,phase,blend,style){
+ const upper=rigBones[side+'upleg'],lower=rigBones[side+'leg'],foot=rigBones[side+'foot'],rest=modular?.feet?.[side];if(!upper||!lower||!foot||!rest)return;
+ importedModel.updateWorldMatrix(true,true);
+ let a=upper.getWorldPosition(V(0,0,0)),b=lower.getWorldPosition(V(0,0,0)),c=foot.getWorldPosition(V(0,0,0)),L=a.distanceTo(b),M=b.distanceTo(c);if(Math.min(L,M)<1e-5)return;
+ const forward=V(0,0,1).applyQuaternion(importedModel.getWorldQuaternion(new T.Quaternion()));forward.y=0;forward.normalize();
+ let target=importedModel.localToWorld(rest.clone()),stride=style==='slow'?.18:style==='natural'?.32:style==='skip'?.30:.22,lift=style==='skip'?.40:style==='slow'?.19:.27;
+ target.addScaledVector(forward,Math.sin(phase)*(L+M)*stride*blend);target.y+=Math.max(0,-Math.cos(phase))*(L+M)*lift*blend;
+ let d=target.clone().sub(a),dist=T.MathUtils.clamp(d.length(),Math.abs(L-M)+.0001,(L+M)*.999);if(d.lengthSq()<1e-10)return;d.normalize();
+ let kneeForward=forward.clone().addScaledVector(d,-forward.dot(d));if(kneeForward.lengthSq()<.001)kneeForward=V(0,0,1);kneeForward.normalize();
+ let along=(L*L+dist*dist-M*M)/(2*dist),height=Math.sqrt(Math.max(0,L*L-along*along));
+ let knee=a.clone().addScaledVector(d,along).addScaledVector(kneeForward,height),ankle=a.clone().addScaledVector(d,dist),footQ=foot.getWorldQuaternion(new T.Quaternion());
+ aimRigBone(upper,lower,knee.clone().sub(a));aimRigBone(lower,foot,ankle.clone().sub(lower.getWorldPosition(V(0,0,0))));
+ foot.quaternion.copy(foot.parent.getWorldQuaternion(new T.Quaternion()).invert().multiply(footQ));foot.updateWorldMatrix(false,true);
 }
 function animateImported(moving,dt,time){
  moving=moving||rigPreview;let walk=rigPrefs.rigWalk,stance=rigPrefs.rigStand;
@@ -319,7 +335,8 @@ function animateImported(moving,dt,time){
  rigBlend=T.MathUtils.lerp(rigBlend,moving?1:0,1-Math.exp(-dt*12));rigPhase+=dt*cfg[0];let p=rigPhase,blend=rigBlend;
  if(moving&&actualWalk&&next)next.timeScale=walk==='slow'?.72:walk==='cute'?1.2:walk==='skip'?1.35:1;
  else if(next)next.timeScale=1;
- if(canRig&&!actualWalk&&blend>.002){
+ if(canRig&&!actualWalk&&blend>.002&&modular){stepModularLeg('left',p,blend,walk);stepModularLeg('right',p+Math.PI,blend,walk);}
+ if(canRig&&!actualWalk&&blend>.002&&!modular){
   for(let [side,phase] of [['left',p],['right',p+Math.PI]]){
    let stride=Math.sin(phase),lift=Math.max(0,-Math.cos(phase));
    offsetBone(side+'upleg','x',cfg[1]*stride*blend);
@@ -331,8 +348,8 @@ function animateImported(moving,dt,time){
   offsetBone('spine','z',Math.sin(p)*.025*blend);offsetBone('head','z',-Math.sin(p)*.028*blend);
  }
  if((moving&&!actualWalk)||(!moving&&(stance==='idle'||modular)))relaxRigArms(p,blend,walk);if(modular&&!moving){offsetBone('head','z',stance==='gentle'?.10:stance==='cheerful'?-.065:Math.sin(time*1.6)*.012);offsetBone('spine','z',stance==='gentle'?.025:0)}
- if(!moving&&stance==='idle'&&rigPrefs.rigFace==='soft')offsetBone('head','z',.065);
- importedPivot.position.y=moving?Math.abs(Math.sin(p))*(walk==='skip'?.065:walk==='cute'?.025:.014):0;
+ if(!modular&&!moving&&stance==='idle'&&rigPrefs.rigFace==='soft')offsetBone('head','z',.065);
+ importedPivot.position.y=modular?0:moving?Math.abs(Math.sin(p))*(walk==='skip'?.065:walk==='cute'?.025:.014):0;
  importedPivot.rotation.z=canRig?0:moving?Math.sin(p)*.016:0;importedPivot.rotation.x=0;
 }
 function configureAtlas(root,source){
@@ -381,12 +398,19 @@ async function parseAvatarAsset(buffer){
   let bytes=fbx[1],g=new FBXLoader(manager).parse(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');
   if(fbx[0].toLowerCase().endsWith('chr_chibi_modularmaster.fbx')){
    const loader=new T.TextureLoader(),textures={};for(let key of ['body','face','hair','top_clothes','bottom_clothes','accesories']){let url=urls.get('tex_chibi_'+key+'_bc.png');if(url){let tex=await loader.loadAsync(url);tex.colorSpace=T.SRGBColorSpace;tex.wrapS=tex.wrapT=T.RepeatWrapping;tex.anisotropy=4;textures[key]=tex}}
+   // Follow the materials assigned in the original FBX, including Body_Head -> M_Face.
    let parts={},accessories={};
-   function materialFor(key){let map=textures[key]||null,m=new T.MeshStandardMaterial({map,color:0xffffff,roughness:.87,metalness:0});m.userData.originalMap=map;return m}
-   g.traverse(o=>{if(!o.isMesh)return;let k=modKey(o.name).replace(/^chrchibi/,'');let cat=k.startsWith('body')?'body':/eyes|eyebrow|mouth/.test(k)?'face':k.startsWith('hairstyle')?'hair':/tshirt|hoodie/.test(k)?'top_clothes':'bottom_clothes';o.material=materialFor(cat);parts[k]=o;});
-   let head;g.traverse(o=>{if(o.isBone&&modKey(o.name)==='defhead')head=o});
-   if(head){for(let key of ['hat','headphone']){let entry=entries.find(([n])=>n.toLowerCase().endsWith('acc_chibi_'+key+'.fbx'));if(!entry)continue;let bytes=entry[1],acc=new FBXLoader(manager).parse(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');acc.traverse(o=>{if(o.isMesh)o.material=materialFor('accesories')});acc.visible=false;head.add(acc);accessories[key]=acc}}
-   for(let [k,o] of Object.entries(parts))if(['hairstyle2','hoodie','shorts'].includes(k))o.visible=false;
+   let hairTint=null;if(textures.hair?.image){let c=document.createElement('canvas');c.width=textures.hair.image.width;c.height=textures.hair.image.height;let ctx=c.getContext('2d');ctx.drawImage(textures.hair.image,0,0);let im=ctx.getImageData(0,0,c.width,c.height);for(let i=0;i<im.data.length;i+=4){let lum=.2126*im.data[i]+.7152*im.data[i+1]+.0722*im.data[i+2],v=Math.round(T.MathUtils.clamp(.68+lum/210,0,1)*255);im.data[i]=im.data[i+1]=im.data[i+2]=v}ctx.putImageData(im,0,0);hairTint=new T.CanvasTexture(c);hairTint.colorSpace=T.SRGBColorSpace;hairTint.wrapS=hairTint.wrapT=T.RepeatWrapping;hairTint.anisotropy=4}
+   function materialFor(key){let map=textures[key]||null,m=new T.MeshStandardMaterial({map,color:0xffffff,roughness:.86,metalness:0});m.userData.originalMap=map;if(key==='hair')m.userData.tintMap=hairTint;return m}
+   const assigned={mbody:'body',mface:'face',mhair:'hair',mtopclothes:'top_clothes',mbottomclothes:'bottom_clothes',maccesories:'accesories'};
+   const fallback={bodyhead:'face',eyes:'face',eyebrowns:'face',mouth:'face',bodyarm:'body',bodyhand:'body',bodyleg:'body',hairstyle1:'hair',hairstyle2:'hair',tshirt:'top_clothes',hoodie:'top_clothes',skirt:'bottom_clothes',shorts:'bottom_clothes',shoes:'bottom_clothes',socks:'bottom_clothes'};
+   g.traverse(o=>{if(!o.isMesh)return;let k=modKey(o.name).replace(/^chrchibi/,'');let make=m=>materialFor(assigned[modKey(m?.name||'')]||fallback[k]||'body');o.material=Array.isArray(o.material)?o.material.map(make):make(o.material);parts[k]=o;});
+   const required=['bodyhead','hairstyle1','hairstyle2','tshirt','hoodie','skirt','shorts','eyes','mouth'];if(required.some(k=>!parts[k]))throw Error('キャラクターのパーツが見つかりません: '+required.filter(k=>!parts[k]).join(', '));
+   // Accessory FBXs are authored in the same world-space coordinates as the base body.
+   // Preserve their authored position and orientation when parenting to DEF_Head.
+   g.updateMatrixWorld(true);let head;g.traverse(o=>{if(o.isBone&&modKey(o.name)==='defhead')head=o});
+   if(head){for(let key of ['hat','headphone']){let entry=entries.find(([n])=>n.toLowerCase().endsWith('acc_chibi_'+key+'.fbx'));if(!entry)continue;let bytes=entry[1],acc=new FBXLoader(manager).parse(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');acc.traverse(o=>{if(o.isMesh)o.material=materialFor('accesories')});g.add(acc);g.updateMatrixWorld(true);head.attach(acc);acc.visible=false;accessories[key]=acc}}
+   for(let [k,o] of Object.entries(parts))o.visible=!['hairstyle2','hoodie','shorts'].includes(k);
    for(let u of urls.values())URL.revokeObjectURL(u);
    return {scene:g,animations:g.animations||[],modular:{parts,accessories}};
   }
@@ -400,7 +424,7 @@ async function parseAvatarAsset(buffer){
   return {scene:g,animations:g.animations||[],laviAtlas:/lavi_anim\.fbx$/i.test(fbx[0])?albedo:null};
  }catch(e){for(let u of urls.values())URL.revokeObjectURL(u);throw e}
 }
-async function installModel(buffer,name,active=true){let gltf=await parseAvatarAsset(buffer);let g=gltf.scene;g.updateMatrixWorld(true);let bounds=new T.Box3();if(gltf.modular){g.traverseVisible(o=>{if(o.isMesh)bounds.union(new T.Box3().setFromObject(o))})}else bounds.setFromObject(g);let size=bounds.getSize(V(0,0,0)),center=bounds.getCenter(V(0,0,0));if(!Number.isFinite(size.y)||size.y<.001)throw Error('モデルのサイズを確認できません');let normalized=new T.Group(),offset=new T.Group();normalized.add(offset);offset.add(g);let k=1.83/size.y;offset.position.set(-center.x,-bounds.min.y,-center.z);normalized.scale.setScalar(k);normalized.rotation.y=importedAngle;g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;for(let m of [].concat(o.material)){if(m.isMeshStandardMaterial){m.needsUpdate=true}}}});if(importedModel){if(importMixer){importMixer.stopAllAction();importMixer.uncacheRoot(importMixer.getRoot())}importedPivot.remove(importedModel);disposeImported(importedModel)}importedModel=normalized;importedPivot.add(normalized);modular=gltf.modular||null;prepareAnimations(g,gltf.animations||[]);configureAtlas(g,gltf.laviAtlas);if(modular)applyModular();$('modelStatus').textContent='読み込み済み：'+name+' ／ '+(importActions.walk||importActions.run?'歩行モーションあり':'歩行モーションなし')+' ／ '+(importActions.idle?'待機モーションあり':'待機モーションなし')+(gltf.animations?.length?' ／ 収録: '+gltf.animations.map(c=>c.name).join(', '):'');setImported(active)}
+async function installModel(buffer,name,active=true){let gltf=await parseAvatarAsset(buffer);let g=gltf.scene;g.updateMatrixWorld(true);let bounds=new T.Box3();if(gltf.modular){g.traverseVisible(o=>{if(o.isMesh)bounds.union(new T.Box3().setFromObject(o))})}else bounds.setFromObject(g);let size=bounds.getSize(V(0,0,0)),center=bounds.getCenter(V(0,0,0));if(!Number.isFinite(size.y)||size.y<.001)throw Error('モデルのサイズを確認できません');let normalized=new T.Group(),offset=new T.Group();normalized.add(offset);offset.add(g);let k=1.83/size.y;offset.position.set(-center.x,-bounds.min.y,-center.z);normalized.scale.setScalar(k);normalized.rotation.y=importedAngle;g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;for(let m of [].concat(o.material)){if(m.isMeshStandardMaterial){m.needsUpdate=true}}}});if(importedModel){if(importMixer){importMixer.stopAllAction();importMixer.uncacheRoot(importMixer.getRoot())}importedPivot.remove(importedModel);disposeImported(importedModel)}importedModel=normalized;importedPivot.add(normalized);modular=gltf.modular||null;prepareAnimations(g,gltf.animations||[]);configureAtlas(g,gltf.laviAtlas);if(modular)applyModular();$('modelStatus').textContent='読み込み済み：'+name+' ／ '+(importActions.walk||importActions.run?'歩行モーションあり':modular?'関節歩行':'歩行モーションなし')+' ／ '+(importActions.idle?'待機モーションあり':'待機モーションなし')+(gltf.animations?.length?' ／ 収録: '+gltf.animations.map(c=>c.name).join(', '):'');setImported(active)}
 $('modelToggle').onclick=()=>setImported(!importedActive);$('modelTurn').onclick=()=>{if(!importedModel)return;importedAngle=(importedAngle+Math.PI/2)%(Math.PI*2);importedModel.rotation.y=importedAngle;try{localStorage.setItem('mochi-model-angle',String(importedAngle))}catch{}};
 $('modelFile').addEventListener('change',async e=>{let file=e.target.files?.[0];if(!file)return;e.target.disabled=true;$('modelStatus').textContent='3Dモデルを読み込み中…';try{if(file.size>100*1024*1024)throw Error('100MB以下のGLBまたはZIPを選んでください');let buffer=await file.arrayBuffer();await installModel(buffer,file.name);try{await putModel({buffer,name:file.name});toast('専用アバターを保存しました')}catch{toast('読み込み完了・この端末での保存に失敗')}}catch(err){$('modelStatus').textContent='読み込みエラー：'+err.message}finally{e.target.disabled=false;e.target.value=''}});
 (async()=>{try{let first=localStorage.getItem('mochi-mascot-v2')!=='1';if(first){localStorage.setItem('mochi-mascot-v2','1');localStorage.setItem('mochi-custom-active','0')}let saved=await getModel();if(saved?.buffer)await installModel(saved.buffer,saved.name,localStorage.getItem('mochi-custom-active')==='1')}catch(err){$('modelStatus').textContent='保存モデルを復元できません。再度選択してください。'}})();
@@ -422,7 +446,7 @@ renderer.domElement.addEventListener('pointermove',e=>{if(!preview)return;let p=
 let keys=new Set();const keyMap={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right'};window.addEventListener('keydown',e=>{if(!keyMap[e.code]||['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;e.preventDefault();keys.add(keyMap[e.code])});window.addEventListener('keyup',e=>keys.delete(keyMap[e.code]));window.addEventListener('blur',()=>keys.clear());document.querySelectorAll('[data-move]').forEach(b=>{b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);keys.add(b.dataset.move)};b.onpointerup=b.onpointercancel=b.onlostpointercapture=()=>keys.delete(b.dataset.move)});
 function walkable(x,z,r=.26){if(Math.abs(x)>3.78||Math.abs(z)>3.22)return false;return ![...fixedFurniture,...data.furniture].some(b=>{let t=furnitureTypes.find(t=>t.id===b.id);if(!t)return false;let sw=Math.abs(Math.sin(b.r||0))>.5;return Math.abs(x-b.x)<(sw?t.size[1]:t.size[0])/2+r&&Math.abs(z-b.z)<(sw?t.size[0]:t.size[1])/2+r})}
 $('photo').onclick=()=>{renderer.render(scene,camera);let a=document.createElement('a');a.href=renderer.domElement.toDataURL('image/png');a.download='mochimochi-room.png';a.click()};
-let prev=performance.now(),time=0;function animate(now){requestAnimationFrame(animate);let dt=Math.min(.05,(now-prev)/1000);prev=now;time+=dt;let x=(keys.has('right')?1:0)-(keys.has('left')?1:0),z=(keys.has('down')?1:0)-(keys.has('up')?1:0);let moving=false;let dir=V(x,0,z);if(dir.lengthSq()>0){target.copy(avatar.position);dir.normalize()}else{dir=target.clone().sub(avatar.position);if(dir.length()<.05)dir.set(0,0,0);else dir.normalize()}if(dir.lengthSq()>0){let step=1.65*dt,nx=avatar.position.x+dir.x*step,nz=avatar.position.z+dir.z*step;if(walkable(nx,avatar.position.z)){avatar.position.x=nx;moving=true}if(walkable(avatar.position.x,nz)){avatar.position.z=nz;moving=true}if(moving)avatar.rotation.y=Math.atan2(dir.x,dir.z);else target.copy(avatar.position)}legs.forEach((l,i)=>l.rotation.x=moving?Math.sin(time*12+i*Math.PI)*.43:0);arms.forEach((l,i)=>l.rotation.x=moving?Math.sin(time*12+i*Math.PI+Math.PI)*.28:0);avatarVisual.position.y=.02+(moving?Math.abs(Math.sin(time*12))*.025:Math.sin(time*2)*.008);if(importedActive)animateImported(moving,dt,time);
+let prev=performance.now(),time=0;function animate(now){requestAnimationFrame(animate);let dt=Math.min(.05,(now-prev)/1000);prev=now;time+=dt;let x=(keys.has('right')?1:0)-(keys.has('left')?1:0),z=(keys.has('down')?1:0)-(keys.has('up')?1:0);let moving=false;let dir=V(x,0,z);if(dir.lengthSq()>0){target.copy(avatar.position);dir.normalize()}else{dir=target.clone().sub(avatar.position);if(dir.length()<.05)dir.set(0,0,0);else dir.normalize()}if(dir.lengthSq()>0){let step=(importedActive&&modular?({cute:1.12,natural:1.36,skip:1.38,slow:.78}[rigPrefs.rigWalk]||1.12):1.65)*dt,nx=avatar.position.x+dir.x*step,nz=avatar.position.z+dir.z*step;if(walkable(nx,avatar.position.z)){avatar.position.x=nx;moving=true}if(walkable(avatar.position.x,nz)){avatar.position.z=nz;moving=true}if(moving)avatar.rotation.y=Math.atan2(dir.x,dir.z);else target.copy(avatar.position)}legs.forEach((l,i)=>l.rotation.x=moving?Math.sin(time*12+i*Math.PI)*.43:0);arms.forEach((l,i)=>l.rotation.x=moving?Math.sin(time*12+i*Math.PI+Math.PI)*.28:0);avatarVisual.position.y=.02+(moving?Math.abs(Math.sin(time*12))*.025:Math.sin(time*2)*.008);if(importedActive)animateImported(moving,dt,time);
 for(let [i,p] of pets){p.timer-=dt;if(p.timer<0){p.timer=2+Math.random()*4;p.target.set(p.root.position.x+(Math.random()-.5)*2.5,0,p.root.position.z+(Math.random()-.5)*2.5)}let d=p.target.clone().sub(p.root.position),dist=d.length();if(dist>.07){d.normalize();let nx=p.root.position.x+d.x*dt*.48,nz=p.root.position.z+d.z*dt*.48;if(walkable(nx,nz,.17)&&Math.hypot(nx-avatar.position.x,nz-avatar.position.z)>.38){p.root.position.set(nx,0,nz);p.root.rotation.y=Math.atan2(d.x,d.z)}else p.target.copy(p.root.position)}p.happy=Math.max(0,p.happy-dt);p.g.position.y=.34+Math.abs(Math.sin(time*(p.happy?15:dist>.07?7:2)+i))*(p.happy?.17:.025)}
 controls.update();backWall.visible=win.visible=rearDetails.visible=camera.position.z>-2;sideWall.visible=sideDetails.visible=camera.position.x>-2.5;renderer.render(scene,camera)}
 $('loading').hidden=true;requestAnimationFrame(animate);
