@@ -243,9 +243,9 @@ $('random').onclick=()=>{let pick=a=>a[Math.floor(Math.random()*a.length)];Objec
 function modelDB(){return new Promise((resolve,reject)=>{let req=indexedDB.open('mochi-custom-avatar',1);req.onupgradeneeded=()=>req.result.createObjectStore('models');req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
 async function getModel(){let db=await modelDB();try{return await new Promise((res,rej)=>{let req=db.transaction('models','readonly').objectStore('models').get('avatar');req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error)})}finally{db.close()}}
 async function putModel(value){let db=await modelDB();try{await new Promise((res,rej)=>{let tx=db.transaction('models','readwrite');tx.objectStore('models').put(value,'avatar');tx.oncomplete=res;tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error)})}finally{db.close()}}
-function setImported(on){importedActive=!!on&&!!importedModel;avatarVisual.visible=!importedActive;importedPivot.visible=importedActive;$('rigEditor').hidden=!importedActive;$('atlasEditor').hidden=!rigAtlas;$('rigNote').textContent=rigAtlas?'元のテクスチャを活かして配色・表情を調整できます。衣装・髪の形は固定です。':'このモデルは骨格・アニメーションの設定に対応します。';rigPreview=false;$('previewWalk').textContent='歩行プレビュー';if(!importedActive&&importMixer){importMixer.stopAllAction();importPlaying=null;rigLastPose=null;resetBones()}importedPivot.scale.setScalar(Number(data.avatar.height));$('modelToggle').disabled=!importedModel;$('modelToggle').textContent=importedActive?'元のアバターに戻す':'専用モデルに切替';$('modelTurn').disabled=!importedActive;$('customHint').textContent=importedActive?'専用モデル使用中：上の専用アバター編集で配色・動作を調整できます。名前・身長も変更できます。':'着せ替えは無料。変更は自動保存されます。';for(let k of fields)$(k).disabled=importedActive&&!['name','height'].includes(k);$('random').disabled=importedActive;try{localStorage.setItem('mochi-custom-active',importedActive?'1':'0')}catch{}}
+function setImported(on){importedActive=!!on&&!!importedModel;avatarVisual.visible=!importedActive;importedPivot.visible=importedActive;$('rigEditor').hidden=!importedActive;$('atlasEditor').hidden=!rigAtlas;$('rigNote').textContent=rigAtlas?'元の配色を初期表示します。配色・表情は試験的な調整です。衣装・髪の形は固定です。':'このモデルは骨格・アニメーションの設定に対応します。';rigPreview=false;$('previewWalk').textContent='歩行プレビュー';if(!importedActive&&importMixer){importMixer.stopAllAction();importPlaying=null;rigLastPose=null;resetBones()}importedPivot.scale.setScalar(Number(data.avatar.height));$('modelToggle').disabled=!importedModel;$('modelToggle').textContent=importedActive?'元のアバターに戻す':'専用モデルに切替';$('modelTurn').disabled=!importedActive;$('customHint').textContent=importedActive?'専用モデル使用中：上の専用アバター編集で配色・動作を調整できます。名前・身長も変更できます。':'着せ替えは無料。変更は自動保存されます。';for(let k of fields)$(k).disabled=importedActive&&!['name','height'].includes(k);$('random').disabled=importedActive;try{localStorage.setItem('mochi-custom-active',importedActive?'1':'0')}catch{}}
 const rigDefaults={rigHair:'original',rigClothes:'original',rigEye:'original',rigFace:'original',rigWalk:'cute',rigStand:'idle'};
-let rigPrefs={...rigDefaults,...read('mochi-rig-style-v1',{})};
+let rigPrefs={...rigDefaults,...read('mochi-rig-style-v2',{})};
 const rigFields=Object.keys(rigDefaults);
 function syncRigFields(){for(let key of rigFields){let el=$(key);if([...el.options].some(o=>o.value===rigPrefs[key]))el.value=rigPrefs[key];else el.value=rigDefaults[key]}}
 function resetBones(){for(let [k,b] of Object.entries(rigBones)){let base=rigBase[k];if(base){b.quaternion.copy(base.q);b.position.copy(base.p)}}}
@@ -266,12 +266,38 @@ function prepareAnimations(root,clips){
  syncRigFields();
 }
 function offsetBone(key,axis,rad){let b=rigBones[key],a=rigAxes[key]?.[axis];if(b&&a)b.quaternion.multiply(new T.Quaternion().setFromAxisAngle(a,rad))}
+// Relax the source T-pose using the actual skinned skeleton in world space.
+// Quaternion delta is converted back into parent-local space, so FBX bone axes do not matter.
+function aimRigBone(b,child,dir){
+ if(!b||!child||!b.parent)return;
+ b.updateWorldMatrix(true,true);
+ let from=child.getWorldPosition(new T.Vector3()).sub(b.getWorldPosition(new T.Vector3()));
+ if(from.lengthSq()<1e-10)return;from.normalize();
+ let delta=new T.Quaternion().setFromUnitVectors(from,dir.clone().normalize());
+ let parentQ=b.parent.getWorldQuaternion(new T.Quaternion());
+ b.quaternion.premultiply(parentQ.clone().invert().multiply(delta).multiply(parentQ)).normalize();
+ b.updateWorldMatrix(false,true);
+}
+function relaxRigArms(phase,blend,walk){
+ if(!importedModel)return;
+ const forward=new T.Vector3(0,0,1).applyQuaternion(importedModel.getWorldQuaternion(new T.Quaternion()));forward.y=0;if(forward.lengthSq()<.001)forward.set(0,0,1);forward.normalize();
+ for(let [side,shift] of [['left',0],['right',Math.PI]]){
+  let upper=rigBones[side+'arm'],lower=rigBones[side+'forearm'],hand=rigBones[side+'hand'];if(!upper||!lower)continue;
+  upper.updateWorldMatrix(true,true);
+  let outward=upper.getWorldPosition(new T.Vector3()).sub(rigBones.spine2?.getWorldPosition(new T.Vector3())||importedPivot.getWorldPosition(new T.Vector3()));outward.y=0;
+  if(outward.lengthSq()<.0001)outward.set(side==='left'?1:-1,0,0);outward.normalize();
+  let swing=Math.sin(phase+shift)*blend*(walk==='skip'?.25:walk==='slow'?.13:.20);
+  let dir=new T.Vector3(0,-1,0).addScaledVector(outward,.23).addScaledVector(forward,swing+.035).normalize();
+  aimRigBone(upper,lower,dir);
+  if(hand){let fore=new T.Vector3(0,-1,0).addScaledVector(outward,.12).addScaledVector(forward,swing+.13+blend*.035).normalize();aimRigBone(lower,hand,fore)}
+ }
+}
 function animateImported(moving,dt,time){
  moving=moving||rigPreview;let walk=rigPrefs.rigWalk,stance=rigPrefs.rigStand;
  let idle=importActions.idle,pose=importActions[stance]||idle,canRig=!!(rigBones.leftupleg&&rigBones.rightupleg);
  // Preserve the authored idle posture. For models with no named walk clip, animate the existing skeleton.
  let next=moving?(importActions.walk||importActions.run||idle):pose;
- if(next!==importPlaying){if(importPlaying){importPlaying.stop()}resetBones();if(next){next.reset().setEffectiveWeight(1).play()}importPlaying=next||null}
+ if(next!==importPlaying){if(importPlaying){importPlaying.stop()}resetBones();rigLastPose=null;if(next){next.reset().setEffectiveWeight(1).play()}importPlaying=next||null}
  // Reset additive offsets before sampling clips, avoiding cumulative joint rotation.
  if(rigLastPose){for(let [k,q] of Object.entries(rigLastPose))if(rigBones[k])rigBones[k].quaternion.copy(q)}
  if(importMixer)importMixer.update(dt);
@@ -291,6 +317,7 @@ function animateImported(moving,dt,time){
   }
   offsetBone('spine','z',Math.sin(p)*.025*blend);offsetBone('head','z',-Math.sin(p)*.028*blend);
  }
+ if((moving&&!actualWalk)||(!moving&&stance==='idle'))relaxRigArms(p,blend,walk);
  if(!moving&&stance==='idle'&&rigPrefs.rigFace==='soft')offsetBone('head','z',.065);
  importedPivot.position.y=moving?Math.abs(Math.sin(p))*(walk==='skip'?.065:walk==='cute'?.025:.014):0;
  importedPivot.rotation.z=canRig?0:moving?Math.sin(p)*.016:0;importedPivot.rotation.x=0;
@@ -298,7 +325,7 @@ function animateImported(moving,dt,time){
 function configureAtlas(root,source){
  rigAtlas=null;if(!source?.image)return;
  let c=document.createElement('canvas');c.width=source.image.width;c.height=source.image.height;let ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(source.image,0,0);let original=ctx.getImageData(0,0,c.width,c.height);
- let tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;tex.wrapS=T.MirroredRepeatWrapping;tex.wrapT=T.RepeatWrapping;tex.anisotropy=4;
+ let tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;tex.wrapS=T.RepeatWrapping;tex.wrapT=T.RepeatWrapping;tex.anisotropy=4;
  let mats=new Set();root.traverse(o=>{if(o.isMesh)for(let m of [].concat(o.material))if(m.map===source){m.map=tex;m.needsUpdate=true;mats.add(m)}});
  if(!mats.size){tex.dispose();return}rigAtlas={c,ctx,original,tex};source.dispose();applyRigTexture();
 }
@@ -322,9 +349,9 @@ function applyRigTexture(){
   if(rigPrefs.rigFace==='soft'){let xx=w*.744,yy=h*.292;ctx.fillStyle='rgba(247,218,204,.12)';ctx.beginPath();ctx.ellipse(xx,yy,w*.035,h*.035,0,0,Math.PI*2);ctx.fill()}
  }tex.needsUpdate=true;
 }
-for(let key of rigFields)$(key).addEventListener('change',()=>{rigPrefs[key]=$(key).value;write('mochi-rig-style-v1',rigPrefs);if(key==='rigStand')rigPreview=false;applyRigTexture()});
+for(let key of rigFields)$(key).addEventListener('change',()=>{rigPrefs[key]=$(key).value;write('mochi-rig-style-v2',rigPrefs);if(key==='rigStand')rigPreview=false;applyRigTexture()});
 $('previewWalk').onclick=()=>{rigPreview=!rigPreview;$('previewWalk').textContent=rigPreview?'プレビュー停止':'歩行プレビュー'};
-$('rigReset').onclick=()=>{rigPrefs={...rigDefaults};syncRigFields();write('mochi-rig-style-v1',rigPrefs);applyRigTexture();rigPreview=false;$('previewWalk').textContent='歩行プレビュー'};
+$('rigReset').onclick=()=>{rigPrefs={...rigDefaults};syncRigFields();write('mochi-rig-style-v2',rigPrefs);applyRigTexture();rigPreview=false;$('previewWalk').textContent='歩行プレビュー'};
 function disposeImported(g){let gs=new Set(),ms=new Set(),ts=new Set();g.traverse(o=>{if(o.isMesh){gs.add(o.geometry);for(let m of [].concat(o.material)){ms.add(m);for(let v of Object.values(m))if(v?.isTexture)ts.add(v)}}});for(let t of ts)t.dispose();for(let m of ms)m.dispose();for(let geo of gs)geo.dispose()}
 async function parseAvatarAsset(buffer){
  if(!(buffer instanceof ArrayBuffer)||buffer.byteLength<20)throw Error('ファイルが空か、破損しています');
@@ -341,7 +368,7 @@ async function parseAvatarAsset(buffer){
   let bytes=fbx[1],g=new FBXLoader(manager).parse(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');
   let albedoEntry=[...urls].find(([n])=>/albedo|diffuse|base.?color/i.test(n)),aoEntry=[...urls].find(([n])=>/(^|[_-])ao\./i.test(n));
   let tl=new T.TextureLoader(),albedo=albedoEntry?await tl.loadAsync(albedoEntry[1]):null,ao=aoEntry?await tl.loadAsync(aoEntry[1]):null;
-  if(albedo){albedo.colorSpace=T.SRGBColorSpace;albedo.anisotropy=4;albedo.wrapS=T.MirroredRepeatWrapping;albedo.wrapT=T.RepeatWrapping}if(ao){ao.colorSpace=T.NoColorSpace;ao.channel=0;ao.wrapS=T.MirroredRepeatWrapping;ao.wrapT=T.RepeatWrapping}
+  if(albedo){albedo.colorSpace=T.SRGBColorSpace;albedo.anisotropy=4;albedo.wrapS=T.RepeatWrapping;albedo.wrapT=T.RepeatWrapping}if(ao){ao.colorSpace=T.NoColorSpace;ao.channel=0;ao.wrapS=T.RepeatWrapping;ao.wrapT=T.RepeatWrapping}
   let oldMats=new Map();
   g.traverse(o=>{if(!o.isMesh)return;let replace=m=>{if(oldMats.has(m))return oldMats.get(m);let nm=new T.MeshStandardMaterial({color:albedo?0xffffff:(m.color||0xffffff),map:albedo||m.map||null,aoMap:ao||null,aoMapIntensity:.65,roughness:.85,metalness:0,side:m.side,transparent:m.transparent,opacity:m.opacity,alphaTest:m.alphaTest||0});oldMats.set(m,nm);return nm};o.material=Array.isArray(o.material)?o.material.map(replace):replace(o.material)});
   // TextureLoader has finished decoding the ZIP textures. Keep any URLs required by FBX's own asynchronous requests until they finish.
